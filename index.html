@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhysioRX - Simplified Patient Management</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.7/dayjs.min.js"></script>
+    
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f0f4f8;
+        }
+        .patient-form {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .prescription-pdf {
+            background-color: white;
+            border: 1px solid #e2e8f0;
+            padding: 15px;
+            margin: 20px auto;
+            max-width: 800px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            font-size: 0.85rem;
+        }
+        .prescription-header {
+            background-color: #f0fff0;
+            padding: 10px;
+            border-bottom: 2px solid #3b82f6;
+            margin-bottom: 15px;
+        }
+        .prescription-logo {
+            font-size: 20px;
+            font-weight: bold;
+            color: #3b82f6;
+        }
+        .prescription-section {
+            margin-bottom: 15px;
+        }
+        .patient-info-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .patient-info-table th, .patient-info-table td {
+            padding: 8px;
+            border: 1px solid #e2e8f0;
+        }
+        .patient-info-table th {
+            font-weight: bold;
+            width: 20%;
+        }
+        .patient-info-table tr:nth-child(odd) {
+            background-color: #f5f5f5;
+        }
+        .notes-box {
+            background-color: #ffffff;
+            border: 1px solid #e2e8f0;
+            padding: 10px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: Arial, sans-serif;
+            color: #000000;
+        }
+        .hidden {
+            display: none;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 10px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            background: #4caf50;
+            color: white;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 1000;
+        }
+        .toast.error {
+            background: #f44336;
+        }
+        .toast.show {
+            opacity: 1;
+        }
+        .btn {
+            transition: all 0.2s ease;
+        }
+        .btn:hover {
+            transform: translateY(-1px);
+        }
+        .btn:active {
+            transform: translateY(1px);
+        }
+        @media print {
+            body {
+                background-color: white;
+                -webkit-print-color-adjust: exact !important;
+                color-adjust: exact !important;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .prescription-pdf {
+                box-shadow: none;
+                border: none;
+                margin: 0;
+                padding: 0;
+            }
+        }
+    </style>
+</head>
+<body class="p-4">
+    <div class="container mx-auto">
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-3xl font-bold text-blue-600">PhysioRX</h1>
+            <a href="patient-history.html" class="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 transition btn">
+                <i class="fas fa-history mr-2"></i>View Patient History
+            </a>
+        </div>
+
+        <!-- Main Form -->
+        <div class="patient-form p-6 mb-8 no-print">
+            <h2 class="text-xl font-bold mb-4">Patient Information</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="patientId" class="block text-sm font-medium text-gray-700 mb-1">Patient ID</label>
+                    <div class="flex">
+                        <input type="text" id="patientId" class="w-full px-3 py-2 border border-gray-300 rounded-l-md" placeholder="Leave blank to auto-generate">
+                        <button id="generatePatientId" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-r-md hover:bg-gray-300 transition">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div>
+                    <label for="date" class="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                    <input type="date" id="date" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                </div>
+                
+                <div>
+                    <label for="patientName" class="block text-sm font-medium text-gray-700 mb-1">Patient Name*</label>
+                    <input type="text" id="patientName" class="w-full px-3 py-2 border border-gray-300 rounded-md" required>
+                </div>
+                
+                <div>
+                    <label for="patientAge" class="block text-sm font-medium text-gray-700 mb-1">Age*</label>
+                    <input type="number" id="patientAge" class="w-full px-3 py-2 border border-gray-300 rounded-md" required>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Gender*</label>
+                    <div class="flex gap-4">
+                        <label class="inline-flex items-center">
+                            <input type="radio" name="gender" value="Male" class="form-radio">
+                            <span class="ml-2">Male</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="radio" name="gender" value="Female" class="form-radio">
+                            <span class="ml-2">Female</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="radio" name="gender" value="Other" class="form-radio">
+                            <span class="ml-2">Other</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div>
+                    <label for="contactNumber" class="block text-sm font-medium text-gray-700 mb-1">Contact Number*</label>
+                    <input type="tel" id="contactNumber" class="w-full px-3 py-2 border border-gray-300 rounded-md" required>
+                </div>
+                
+                <div class="md:col-span-2">
+                    <label for="address" class="block text-sm font-medium text-gray-700 mb-1">Address*</label>
+                    <input type="text" id="address" class="w-full px-3 py-2 border border-gray-300 rounded-md" required>
+                </div>
+            </div>
+            
+            <h2 class="text-xl font-bold mb-4 mt-6">Doctor's Notes</h2>
+            <div class="mb-4">
+                <textarea id="doctorNotes" rows="4" class="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Enter diagnosis, treatment plan and any additional notes here..."></textarea>
+            </div>
+            
+            <div class="flex justify-end mt-6 gap-4">
+                <button id="clearForm" class="bg-gray-300 text-gray-700 px-6 py-2 rounded hover:bg-gray-400 transition btn">
+                    <i class="fas fa-eraser mr-2"></i>Clear
+                </button>
+                <button id="generatePdfBtn" class="bg-green-500 text-white px-6 py-2 rounded hover:bg-green-600 transition btn">
+                    <i class="fas fa-file-pdf mr-2"></i>Generate PDF
+                </button>
+            </div>
+        </div>
+
+        <!-- PDF Preview -->
+        <div id="prescriptionPdf" class="prescription-pdf hidden">
+            <div class="prescription-header flex justify-between items-center">
+                <div>
+                    <div class="prescription-logo"><i class="fas fa-running mr-2"></i>PhysioRX Clinic</div>
+                    <div class="text-sm text-gray-600">123 Healthcare Street, Medical City</div>
+                    <div class="text-sm text-gray-600">Phone: (123) 456-7890</div>
+                </div>
+                <div class="text-right">
+                    <div id="pdf-date" class="text-sm text-gray-600">Date: 01/01/2023</div>
+                    <div id="pdf-patientId" class="text-sm font-bold text-blue-600">Patient ID: PT12345</div>
+                </div>
+            </div>
+            
+            <div class="prescription-section">
+                <h2 class="text-lg font-bold text-blue-600 mb-2">Patient Information</h2>
+                <table class="patient-info-table">
+                    <tr>
+                        <th>Name:</th>
+                        <td id="pdf-patientName">John Doe</td>
+                        <th>Age:</th>
+                        <td id="pdf-patientAge">45</td>
+                    </tr>
+                    <tr>
+                        <th>Gender:</th>
+                        <td id="pdf-gender">Male</td>
+                        <th>Contact:</th>
+                        <td id="pdf-contactNumber">+1234567890</td>
+                    </tr>
+                    <tr>
+                        <th>Address:</th>
+                        <td id="pdf-address" colspan="3">123 Patient Street, City</td>
+                    </tr>
+                </table>
+            </div>
+            
+            <div class="prescription-section">
+                <h2 class="text-lg font-bold text-blue-600 mb-2">Treatment Plan</h2>
+                <div class="notes-box">
+                    <div id="pdf-doctorNotes">Patient presented with lower back pain.
+Diagnosis: Lumbar strain.
+Recommended: 
+- Physical therapy 3x weekly for 4 weeks.
+- Core strengthening exercises.
+Precautions: Avoid heavy lifting.</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="pdfActionButtons" class="flex justify-between mt-6 hidden no-print">
+            <button id="backToEdit" class="bg-gray-300 text-gray-700 px-6 py-2 rounded hover:bg-gray-400 transition btn">
+                <i class="fas fa-arrow-left mr-2"></i>Back to Edit
+            </button>
+            <div class="flex gap-4">
+                <button id="downloadPdf" class="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 transition btn">
+                    <i class="fas fa-download mr-2"></i>Download PDF
+                </button>
+                <button id="printPdf" class="bg-green-500 text-white px-6 py-2 rounded hover:bg-green-600 transition btn">
+                    <i class="fas fa-print mr-2"></i>Print
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Toast Notification -->
+    <div id="toast" class="toast">
+        <span id="toastMessage">Successfully saved patient record!</span>
+    </div>
+    
+    <!-- Loader for save operation -->
+    <div id="saveLoader" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white p-6 rounded-lg flex flex-col items-center">
+            <div class="loader mb-4"></div>
+            <p id="loaderText">Processing...</p>
+        </div>
+    </div>
+
+    <!-- Firebase Scripts -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
+        import { getDatabase, ref, set, get } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js";
+        
+        const firebaseConfig = {
+            apiKey: "AIzaSyB20P6ZVvks0YWZlyJEeh36mOdIMjw-CbY",
+            authDomain: "ritam-91a4b.firebaseapp.com",
+            databaseURL: "https://ritam-91a4b-default-rtdb.firebaseio.com",
+            projectId: "ritam-91a4b",
+            storageBucket: "ritam-91a4b.firebasestorage.app",
+            messagingSenderId: "311301321832",
+            appId: "1:311301321832:web:05b00ad5141e249e53b7dd",
+            measurementId: "G-30RLVWXNB2"
+        };
+        
+        const app = initializeApp(firebaseConfig);
+        const analytics = getAnalytics(app);
+        const database = getDatabase(app);
+        
+        window.firebaseFunctions = {
+            savePatientRecord: async function(patientData, isEdit = false, recordId = null) {
+                try {
+                    const id = isEdit && recordId ? recordId : Date.now(); // Use existing recordId for edit, else new timestamp
+                    const recordRef = ref(database, `allRecords/${id}`);
+                    await set(recordRef, {
+                        ...patientData,
+                        patientId: patientData.patientId,
+                        recordId: id
+                    });
+                    return true;
+                } catch (error) {
+                    console.error("Error saving patient record:", error);
+                    return false;
+                }
+            },
+            fetchPatientRecord: async function(recordId) {
+                try {
+                    const recordRef = ref(database, `allRecords/${recordId}`);
+                    const snapshot = await get(recordRef);
+                    if (snapshot.exists()) {
+                        return snapshot.val();
+                    } else {
+                        return null;
+                    }
+                } catch (error) {
+                    console.error("Error fetching patient record:", error);
+                    return null;
+                }
+            }
+        };
+    </script>    
+    <!-- Application Logic -->
+    <script>
+        document.addEventListener('DOMContentLoaded', async function() {
+            const { jsPDF } = window.jspdf;
+            
+            // DOM Elements
+            const patientIdField = document.getElementById('patientId');
+            const generatePatientIdBtn = document.getElementById('generatePatientId');
+            const dateField = document.getElementById('date');
+            const clearFormBtn = document.getElementById('clearForm');
+            const generatePdfBtn = document.getElementById('generatePdfBtn');
+            const prescriptionPdf = document.getElementById('prescriptionPdf');
+            const backToEditBtn = document.getElementById('backToEdit');
+            const downloadPdfBtn = document.getElementById('downloadPdf');
+            const printPdfBtn = document.getElementById('printPdf');
+            const pdfActionButtons = document.getElementById('pdfActionButtons');
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toastMessage');
+            const saveLoader = document.getElementById('saveLoader');
+            const loaderText = document.getElementById('loaderText');
+            
+            // Set current date by default
+            const today = new Date();
+            const formattedDate = formatDate(today);
+            dateField.value = formattedDate;
+            
+            // Check for edit mode
+            let isEditMode = false;
+            let editRecordId = null;
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('edit')) {
+                isEditMode = true;
+                editRecordId = urlParams.get('edit');
+                await loadPatientData(editRecordId);
+            } else {
+                generatePatientId(); // Generate new ID only if not in edit mode
+            }
+
+            // Event Listeners
+            generatePatientIdBtn.addEventListener('click', generatePatientId);
+            clearFormBtn.addEventListener('click', clearForm);
+            generatePdfBtn.addEventListener('click', generatePdf);
+            backToEditBtn.addEventListener('click', backToEdit);
+            downloadPdfBtn.addEventListener('click', downloadPdf);
+            printPdfBtn.addEventListener('click', printPdf);
+            
+            // Generate a unique patient ID
+            function generatePatientId() {
+                const timestamp = Date.now().toString().slice(-6);
+                const randomChars = Math.random().toString(36).substring(2, 5).toUpperCase();
+                patientIdField.value = `PT${randomChars}${timestamp}`;
+            }
+            
+            // Clear the form
+            function clearForm() {
+                document.querySelectorAll('input, textarea').forEach(input => {
+                    if (input.type !== 'radio') {
+                        input.value = '';
+                    }
+                });
+                
+                document.querySelectorAll('input[type="radio"]').forEach(radio => {
+                    radio.checked = false;
+                });
+                
+                // Reset date to today
+                dateField.value = formattedDate;
+                
+                // Generate new patient ID
+                generatePatientId();
+                isEditMode = false;
+                editRecordId = null;
+            }
+            
+            // Load patient data for editing
+            async function loadPatientData(recordId) {
+                showLoader('Loading patient data...');
+                const patientData = await window.firebaseFunctions.fetchPatientRecord(recordId);
+                if (patientData) {
+                    patientIdField.value = patientData.patientId || '';
+                    dateField.value = patientData.date || formattedDate;
+                    document.getElementById('patientName').value = patientData.patientName || '';
+                    document.getElementById('patientAge').value = patientData.patientAge || '';
+                    document.querySelector(`input[name="gender"][value="${patientData.gender}"]`).checked = true;
+                    document.getElementById('contactNumber').value = patientData.contactNumber || '';
+                    document.getElementById('address').value = patientData.address || '';
+                    document.getElementById('doctorNotes').value = patientData.doctorNotes || '';
+                    hideLoader();
+                    showToast('Patient data loaded successfully!');
+                } else {
+                    hideLoader();
+                    showToast('Failed to load patient data.', true);
+                }
+            }
+            
+            // Check required fields
+            function checkRequiredFields() {
+                const requiredFields = [
+                    { id: 'patientName', name: 'Patient Name' },
+                    { id: 'patientAge', name: 'Age' },
+                    { id: 'contactNumber', name: 'Contact Number' },
+                    { id: 'address', name: 'Address' }
+                ];
+                
+                const missingFields = requiredFields.filter(field => {
+                    return !document.getElementById(field.id).value.trim();
+                });
+                
+                // Check gender
+                const gender = document.querySelector('input[name="gender"]:checked');
+                if (!gender) {
+                    missingFields.push({ name: 'Gender' });
+                }
+                
+                return missingFields;
+            }
+            
+            // Generate PDF
+            async function generatePdf() {
+                // Check required fields
+                const missingFields = checkRequiredFields();
+                if (missingFields.length > 0) {
+                    showToast(`Please fill in required fields: ${missingFields.map(f => f.name).join(', ')}`, true);
+                    return;
+                }
+                
+                showLoader('Generating PDF...');
+                
+                // Generate patient ID if not present and not in edit mode
+                if (!patientIdField.value && !isEditMode) {
+                    generatePatientId();
+                }
+                
+                try {
+                    // Collect form data
+                    const patientData = collectFormData();
+                    
+                    // Save to Firebase
+                    const saveResult = await window.firebaseFunctions.savePatientRecord(patientData, isEditMode, editRecordId);
+                    
+                    if (saveResult) {
+                        // Update PDF preview with form data
+                        updatePdfPreview();
+                        
+                        // Show PDF preview and action buttons
+                        document.querySelector('.patient-form').classList.add('hidden');
+                        prescriptionPdf.classList.remove('hidden');
+                        pdfActionButtons.classList.remove('hidden');
+                        
+                        hideLoader();
+                        showToast(isEditMode ? 'Patient record updated successfully!' : 'Patient record saved successfully!');
+                    } else {
+                        hideLoader();
+                        showToast('Failed to save patient record. Please try again.', true);
+                    }
+                } catch (error) {
+                    console.error('Error generating PDF:', error);
+                    hideLoader();
+                    showToast('An error occurred. Please try again.', true);
+                }
+            }
+            
+            // Update PDF preview
+            function updatePdfPreview() {
+                const gender = document.querySelector('input[name="gender"]:checked');
+                
+                document.getElementById('pdf-date').textContent = `Date: ${formatDateForDisplay(document.getElementById('date').value)}`;
+                document.getElementById('pdf-patientId').textContent = `Patient ID: ${patientIdField.value}`;
+                document.getElementById('pdf-patientName').textContent = document.getElementById('patientName').value;
+                document.getElementById('pdf-patientAge').textContent = document.getElementById('patientAge').value;
+                document.getElementById('pdf-gender').textContent = gender ? gender.value : 'Not specified';
+                document.getElementById('pdf-contactNumber').textContent = document.getElementById('contactNumber').value || 'N/A';
+                document.getElementById('pdf-address').textContent = document.getElementById('address').value;
+                document.getElementById('pdf-doctorNotes').textContent = document.getElementById('doctorNotes').value || 'No notes provided.';
+            }
+            
+            // Go back to edit form
+            function backToEdit() {
+                document.querySelector('.patient-form').classList.remove('hidden');
+                prescriptionPdf.classList.add('hidden');
+                pdfActionButtons.classList.add('hidden');
+            }
+            
+            // Collect form data
+            function collectFormData() {
+                const gender = document.querySelector('input[name="gender"]:checked');
+                
+                return {
+                    patientId: patientIdField.value,
+                    date: dateField.value,
+                    patientName: document.getElementById('patientName').value,
+                    patientAge: document.getElementById('patientAge').value,
+                    gender: gender ? gender.value : '',
+                    contactNumber: document.getElementById('contactNumber').value,
+                    address: document.getElementById('address').value,
+                    doctorNotes: document.getElementById('doctorNotes').value,
+                    createdAt: new Date().toISOString()
+                };
+            }
+            
+            // Download PDF
+            function downloadPdf() {
+                showLoader('Downloading PDF...');
+                
+                setTimeout(() => {
+                    const element = document.getElementById('prescriptionPdf');
+                    
+                    html2canvas(element, {
+                        scale: 2,
+                        useCORS: true,
+                        logging: false
+                    }).then(canvas => {
+                        const imgData = canvas.toDataURL('image/png');
+                        const pdf = new jsPDF('p', 'mm', 'a4');
+                        const pdfWidth = pdf.internal.pageSize.getWidth();
+                        const pdfHeight = pdf.internal.pageSize.getHeight();
+                        const imgWidth = canvas.width;
+                        const imgHeight = canvas.height;
+                        const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+                        const imgX = (pdfWidth - imgWidth * ratio) / 2;
+                        const imgY = 0;
+                        
+                        pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
+                        pdf.save(`patient_record_${patientIdField.value}_${new Date().toISOString().slice(0,10)}.pdf`);
+                        
+                        hideLoader();
+                        showToast('PDF downloaded successfully!');
+                    }).catch(err => {
+                        console.error('Error generating PDF:', err);
+                        hideLoader();
+                        showToast('Failed to generate PDF. Please try again.', true);
+                    });
+                }, 500);
+            }
+            
+            // Print PDF
+            function printPdf() {
+                window.print();
+            }
+            
+            // Helper function to format date for input fields (YYYY-MM-DD)
+            function formatDate(date) {
+                const d = new Date(date);
+                let month = '' + (d.getMonth() + 1);
+                let day = '' + d.getDate();
+                const year = d.getFullYear();
+                
+                if (month.length < 2) month = '0' + month;
+                if (day.length < 2) day = '0' + day;
+                
+                return [year, month, day].join('-');
+            }
+            
+            // Helper function to format date for display (DD/MM/YYYY)
+            function formatDateForDisplay(dateString) {
+                if (!dateString) return '';
+                
+                const d = new Date(dateString);
+                if (isNaN(d.getTime())) return dateString;
+                
+                let month = '' + (d.getMonth() + 1);
+                let day = '' + d.getDate();
+                const year = d.getFullYear();
+                
+                if (month.length < 2) month = '0' + month;
+                if (day.length < 2) day = '0' + day;
+                
+                return [day, month, year].join('/');
+            }
+            
+            // Show toast notification
+            function showToast(message, isError = false) {
+                toastMessage.textContent = message;
+                toast.className = isError ? 'toast error' : 'toast';
+                setTimeout(() => {
+                    toast.classList.add('show');
+                }, 100);
+                
+                setTimeout(() => {
+                    toast.classList.remove('show');
+                }, 3000);
+            }
+            
+            // Show loader
+            function showLoader(text) {
+                loaderText.textContent = text || 'Loading...';
+                saveLoader.classList.remove('hidden');
+            }
+            
+            // Hide loader
+            function hideLoader() {
+                saveLoader.classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
